@@ -103,11 +103,14 @@ class Client(object):
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
             bytesize=serial.EIGHTBITS,
-            timeout=timeout)
-
+            timeout=timeout,
+            rtscts=False,
+            dsrdtr=False,
+            xonxoff=False)
         # the number of times it's allowed to retry to get a valid 14 byte read
         self.retries = retries
-
+        self.ser.setRTS(False)
+        self.ser.setDTR(True)
         self._synchronize()
 
     def close(self):
@@ -120,14 +123,15 @@ class Client(object):
         # first get a set of bytes and validate it.
         # if the first doesn't validate, synch and get a new set.
         success = False
-        for readAttempt in xrange(self.retries):
+        for readAttempt in range(self.retries):
             bytes = self.ser.read(self.bytesPerRead)
             if len(bytes) != self.bytesPerRead:
                 self._synchronize()
                 continue
-
+            
             for pos, byte in enumerate(bytes, start=1):
-                if ord(byte) // 16 != pos:
+                
+                if ord( chr( byte)) // 16 != pos:
                     self._synchronize()
                     break
             else:
@@ -158,10 +162,24 @@ class Client(object):
         return value.getMeasurement()
 
     def _synchronize(self):
-        v = self.ser.read(1)
-        if len(v) != 1:
-            raise DmmNoData()
+        
+        while( self.ser.in_waiting < 1):
+            pass
+            #print( 'self.ser.out_waiting: {}, self.ser.in_waiting: {}'.format( self.ser.out_waiting, self.ser.in_waiting))
+        if( False):
+            v = self.ser.read(1)
+        else:
+            v = self.ser.read_until(b'\x17')
+        
+        
+        if( False):
+            if len(v) != 1:
+                raise DmmNoData()
+        else:
+            if len(v) == 0:
+                raise DmmNoData()            
         n = ord(v)
+        
         pos = n // 16
         if pos == 0 or pos == 15:
             raise DmmInvalidSyncValue()
@@ -231,7 +249,7 @@ class Client(object):
         }
 
     def _readAttribByte(self, byte, bits, attribs):
-        b = ord(byte) % 16
+        b = ord( chr( byte)) % 16
         bitVal = 8
         for (attr, val) in bits:
             v = b // bitVal
@@ -242,10 +260,10 @@ class Client(object):
             bitVal //= 2
 
     def _readDigit(self, byte1, byte2):
-        b1 = ord(byte1) % 16
+        b1 = ord( chr( byte1)) % 16
         highBit = b1 // 8
         b1 = b1 % 8
-        b2 = ord(byte2) % 16
+        b2 = ord( chr( byte2)) % 16
         try:
             digit = self.digitTable[(b1, b2)]
         except:
